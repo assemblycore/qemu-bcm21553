@@ -889,6 +889,7 @@ static uint64_t lcdc_cmds, lcdc_data;
 static uint32_t lcdc_gram[240 * 320];
 static bool lcdc_gram_valid;
 static uint8_t lcdc_command, lcdc_args[4], lcdc_arg_count;
+static uint8_t lcdc_pixel_format = 0x77;
 static uint16_t lcdc_x0, lcdc_y0, lcdc_x1 = 239, lcdc_y1 = 319;
 static uint16_t lcdc_x, lcdc_y;
 /* panel state from DCS: 0x28 DISPOFF / 0x10 SLPIN blank, 0x29 / 0x11 unblank */
@@ -935,7 +936,9 @@ static void lcdc_write(void *opaque, hwaddr off, uint64_t val, unsigned size)
         break;
     case LCDC_DATR:
         lcdc_data++;
-        if ((lcdc_command == 0x2a || lcdc_command == 0x2b) &&
+        if (lcdc_command == 0x3a) {
+            lcdc_pixel_format = val & 0xff;
+        } else if ((lcdc_command == 0x2a || lcdc_command == 0x2b) &&
             lcdc_arg_count < 4) {
             lcdc_args[lcdc_arg_count++] = val & 0xff;
             if (lcdc_arg_count == 4) {
@@ -952,7 +955,16 @@ static void lcdc_write(void *opaque, hwaddr off, uint64_t val, unsigned size)
         } else if (lcdc_command == 0x2c &&
                    lcdc_x0 <= lcdc_x1 && lcdc_y0 <= lcdc_y1) {
             if (lcdc_x < 240 && lcdc_y < 320) {
-                lcdc_gram[lcdc_y * 240 + lcdc_x] = 0xff000000 | (val & 0xffffff);
+                uint32_t rgb = val & 0xffffff;
+                if ((lcdc_pixel_format & 7) == 5) {
+                    uint32_t r = (val >> 11) & 31;
+                    uint32_t g = (val >> 5) & 63;
+                    uint32_t b = val & 31;
+                    rgb = (((r << 3) | (r >> 2)) << 16) |
+                          (((g << 2) | (g >> 4)) << 8) |
+                          ((b << 3) | (b >> 2));
+                }
+                lcdc_gram[lcdc_y * 240 + lcdc_x] = 0xff000000 | rgb;
                 lcdc_gram_valid = true;
             }
             if (lcdc_x == lcdc_x1) {
@@ -977,6 +989,7 @@ static void lcdc_reset(void *opaque)
     memset(lcdc_gram, 0, sizeof(lcdc_gram));
     lcdc_gram_valid = false;
     lcdc_command = lcdc_arg_count = 0;
+    lcdc_pixel_format = 0x77;
     lcdc_x0 = lcdc_y0 = lcdc_x = lcdc_y = 0;
     lcdc_x1 = 239;
     lcdc_y1 = 319;

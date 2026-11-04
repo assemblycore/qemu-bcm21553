@@ -310,7 +310,11 @@ static int pm_send(I2CSlave *i2c, uint8_t d)
         s->ptr = d;
         s->first = false;
     } else {
-        s->regs[s->ptr++] = d;
+        /* Register 0 is the read-only device identification register. */
+        if (s->ptr != 0) {
+            s->regs[s->ptr] = d;
+        }
+        s->ptr++;
         pm_update_line(s);
     }
     return 0;
@@ -319,7 +323,7 @@ static int pm_send(I2CSlave *i2c, uint8_t d)
 static uint8_t pm_recv(I2CSlave *i2c)
 {
     TotoroPM *s = TOTORO_PM(i2c);
-    uint8_t r = s->ptr, v = s->regs[r];
+    uint8_t r = s->ptr, v = r == 0 ? 0x32 : s->regs[r];
 
     if (r >= 1 && r <= 3) {
         s->regs[r] = 0;
